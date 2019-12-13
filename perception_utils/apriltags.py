@@ -13,7 +13,7 @@ class AprilTagDetector:
     def __init__(self, apriltag_cfg):
         detector_options = DetectorOptions(**apriltag_cfg['detector'])
         self._cfg = apriltag_cfg
-        self._detector = Detector(detector_options, searchpath=[os.path.join(self._cfg['path_to_april_tag'], 'build', 'lib')])
+        self._detector = Detector(detector_options)
 
     def detect(self, sensor, intr, vis=False):
         camera_params = [getattr(intr, v) for v in ['fx', 'fy', 'cx', 'cy']]
@@ -27,7 +27,8 @@ class AprilTagDetector:
             mask_idx = np.argwhere(dimg)
             overlay = color_im.data.copy()
             overlay[mask_idx[:,0], mask_idx[:,1]] = np.array([0, 1, 0]) * 255
-            plt.show()           
+            plt.imshow(overlay)
+            plt.show()
 
         T_tag_cameras = []
         for detection in detections:
