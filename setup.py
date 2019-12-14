@@ -10,7 +10,8 @@ requirements = [
     'apriltag',
     'autolab_core',
     'pyrealsense2',
-    'autolab-perception',
+    'autolab-perception'
+    # 'visualization' from https://github.com/BerkeleyAutomation/visualization
 ]
 
 setup(name='iamlab_perception_utils',

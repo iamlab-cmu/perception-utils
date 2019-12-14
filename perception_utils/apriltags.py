@@ -42,7 +42,9 @@ class AprilTagDetector:
 
             T_tag_cameras.append(RigidTransform(
                 rotation=M[:3, :3], translation=det_px_center_pt_3d.data,
-                from_frame='tag', to_frame=sensor.frame
+                from_frame='{}/{}'.format(
+                    detection.tag_family.decode(), detection.tag_id
+                ), to_frame=sensor.frame
             ))
 
         return T_tag_cameras
