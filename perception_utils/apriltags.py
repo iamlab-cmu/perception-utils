@@ -32,7 +32,7 @@ class AprilTagDetector:
 
         T_tag_cameras = []
         for detection in detections:
-            M, _, _ = self._detector.detection_pose(detections[0], camera_params, tag_size=self._cfg['tag_size'])
+            M, _, _ = self._detector.detection_pose(detection, camera_params, tag_size=self._cfg['tag_size'])
 
             det_px_center = np.round(detection.center).astype('int')
             det_px_center_pt = Point(det_px_center, frame=sensor.frame)
