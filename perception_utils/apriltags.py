@@ -1,5 +1,3 @@
-import os
-
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
@@ -15,10 +13,8 @@ class AprilTagDetector:
         self._cfg = apriltag_cfg
         self._detector = Detector(detector_options)
 
-    def detect(self, sensor, intr, vis=False):
+    def detect_from_frames(self, color_im, depth_im, intr, vis=False):
         camera_params = [getattr(intr, v) for v in ['fx', 'fy', 'cx', 'cy']]
-        color_im, depth_im, _ = sensor.frames()
-
         gray_frame = cv2.cvtColor(color_im.data, cv2.COLOR_BGR2GRAY)
         detections, dimg = self._detector.detect(gray_frame, return_image=True)
 
@@ -35,7 +31,7 @@ class AprilTagDetector:
             M, _, _ = self._detector.detection_pose(detection, camera_params, tag_size=self._cfg['tag_size'])
 
             det_px_center = np.round(detection.center).astype('int')
-            det_px_center_pt = Point(det_px_center, frame=sensor.frame)
+            det_px_center_pt = Point(det_px_center, frame=intr.frame)
             det_px_depth = depth_im[det_px_center[1], det_px_center[0]]
 
             det_px_center_pt_3d = intr.deproject_pixel(det_px_depth, det_px_center_pt)
@@ -44,7 +40,11 @@ class AprilTagDetector:
                 rotation=M[:3, :3], translation=det_px_center_pt_3d.data,
                 from_frame='{}/{}'.format(
                     detection.tag_family.decode(), detection.tag_id
-                ), to_frame=sensor.frame
+                ), to_frame=intr.frame
             ))
 
         return T_tag_cameras
+
+    def detect(self, sensor, intr, vis=False):
+        color_im, depth_im, _ = sensor.frames()
+        return self.detect_from_frames(color_im, depth_im, intr, vis=vis)
