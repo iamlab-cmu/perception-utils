@@ -12,8 +12,8 @@ class BoxDetector:
         self._color_to_bounds = {}
         for color in cfg["colors"]:
             self._color_to_bounds[color] = {"low":cfg["colors"][color]["low"], "high":cfg["colors"][color]["high"]}
-        import ipdb; ipdb.set_trace()
         self._min_area = cfg["min_area"] # 1000
+        self._main_colors = cfg["main_colors"]
 
     def detect_from_thresh(self,  thresh, image,vis=False, verbose=True):
         contours, hier = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -67,22 +67,12 @@ class BoxDetector:
         #saturation_mask = np.logical_and(saturation_only > self._saturation_low, saturation_only < self._saturation_high)
         #value_mask = np.logical_and(value_only > self._value_low, value_only < self._value_high)
         #thresh = hue_only * hue_mask * saturation_mask*value_mask
-        fits_low = np.sum(hsv < np.array(self._color_to_bounds[color]["low"]),axis=2)==3
+        fits_low = np.sum(hsv > np.array(self._color_to_bounds[color]["low"]),axis=2)==3
         fits_high = np.sum(hsv < np.array(self._color_to_bounds[color]["high"]),axis=2)==3
         thresh = np.logical_and(fits_low, fits_high)
-
-        import ipdb; ipdb.set_trace()
         return thresh
 
-
-    def detect_from_frames(self, color_im, depth_im, intr, vis=False):
-        camera_params = [getattr(intr, v) for v in ['fx', 'fy', 'cx', 'cy']]
-        #convert to HSV here
-        gray_frame = cv2.cvtColor(color_im.data, cv2.COLOR_BGR2GRAY)
-        hsv = cv2.cvtColor(color_im.data, cv2.COLOR_BGR2HSV)
-        image = color_im.data.copy() 
-        thresh = self._get_mask(thresh, 'red')
-        endpoints = self.detect_from_thresh(thresh, image, vis=vis)
+    def _endpoints_to_T_tag_camera(self, endpoints, pencil_id, intr, depth_im):
         T_tag_cameras = []
         for i, endpoint in enumerate(endpoints):
             det_px_center = np.round(endpoint).astype('int')
@@ -90,16 +80,29 @@ class BoxDetector:
             det_px_depth = depth_im[det_px_center[1], det_px_center[0]]
 
             det_px_center_pt_3d = intr.deproject_pixel(det_px_depth, det_px_center_pt)
+            print("Depth detected", det_px_depth)
             
-            #rotation = RigidTransform.z_axis_rotation(yaw + np.pi/2) #only works with overhead camera really then
-            #c_yaw, s_yaw = np.cos(yaw), np.sin(yaw)
-            #rotation_alt = np.array([[c_yaw, s_yaw, 0],[s_yaw, -c_yaw, 0],[0, 0, -1]])
-
             T_tag_cameras.append(RigidTransform(
                 rotation=np.eye(3), translation=det_px_center_pt_3d.data,
-                from_frame=f'pencil_endpoint_{i}_/0'))
+                from_frame=f'pencil_endpoint_{i}_/{pencil_id}'))
+        return T_tag_cameras
 
-
+    def detect_from_frames(self, color_im, depth_im, intr, vis=False, tune_hsv = False):
+        camera_params = [getattr(intr, v) for v in ['fx', 'fy', 'cx', 'cy']]
+        #convert to HSV here
+        gray_frame = cv2.cvtColor(color_im.data, cv2.COLOR_BGR2GRAY)
+        hsv = cv2.cvtColor(color_im.data, cv2.COLOR_BGR2HSV)
+        if tune_hsv:
+            plt.imshow(hsv)
+            plt.show()
+        
+        image = color_im.data.copy() 
+        T_tag_cameras = []
+        for i,color in enumerate(self._main_colors):
+            color_thresh = self._get_mask(hsv, color)
+            color_endpoints = self.detect_from_thresh(color_thresh*gray_frame, image, vis=vis)
+            color_T_tag_cameras = self._endpoints_to_T_tag_camera(color_endpoints, i, intr, depth_im)
+            T_tag_cameras.extend(color_T_tag_cameras)
         return T_tag_cameras
 
     def detect(self, sensor, intr, vis=False):
@@ -148,12 +151,11 @@ class InHandBoxDetector(BoxDetector):
             # draw a red 'nghien' rectangle
             cv2.drawContours(img, [box], 0, (0, 0, 255), thickness=3)
             #detections.append((rect[0],orn))
-            detections = rect[0], w*h
+            detections = [rect[0], w*h]
 
         print(f"Detected {len(detections)} over the minimum area of {self._min_area}")
         if len(detections) == 0:
             return None, 0
-        import ipdb; ipdb.set_trace()
         if vis:
             plt.imshow(thresh, cmap="gray")
             plt.show()
@@ -168,13 +170,13 @@ class InHandBoxDetector(BoxDetector):
         hsv = cv2.cvtColor(color_im.data, cv2.COLOR_BGR2HSV)
         image = color_im.data.copy() 
         red_thresh = self._get_mask(hsv, 'red')
-        pink_thresh = self._get_mask(hsv, 'pink')
+        #pink_thresh = self._get_mask(hsv, 'pink')
         blue_thresh = self._get_mask(hsv, 'blue')
         red_center, red_area = self.detect_from_thresh(gray*red_thresh, image, vis=vis)
-        if red_center is None:
-            return []
-        pink_center, pink_area = self.detect_from_thresh(gray*pink_thresh, image, vis=vis)
         blue_center, blue_area = self.detect_from_thresh(gray*blue_thresh, image, vis=vis)
+        if red_center is None and blue_center is None:
+            return []
+        #pink_center, pink_area = self.detect_from_thresh(gray*pink_thresh, image, vis=vis)
         T_tag_cameras = []
         det_px_center = np.round(red_center).astype('int')
         det_px_center_pt = Point(det_px_center, frame=intr.frame)
@@ -182,9 +184,10 @@ class InHandBoxDetector(BoxDetector):
         if det_px_depth > 0.2: #probably on the ground, just visible from the camera
             print("Detection is not in hand")
             print(det_px_depth)
-            return []
+            #return [] the Intel camera is not reliable enouvh at these distances
 
         det_px_center_pt_3d = intr.deproject_pixel(det_px_depth, det_px_center_pt)
+        """
         if red_area < 50000: #this is where it might not be centered
             #check if it can see the pink, and check if it can see the blue
             #if it can see the pink, call it 8cm. If it can see the blue, call it 10cm. 
@@ -194,6 +197,8 @@ class InHandBoxDetector(BoxDetector):
                 x_offset = 0.12 + np.random.uniform(low=0.01, high = 0.01)
             if pink_area > small_min_area and blue_area < small_min_area:
                 x_offset = 0.08 + np.random.uniform(low=0.01, high = 0.01)
+
+        """
             
         #Very hacky and manual method...
         slope = 0.00012215998849647464 #from other script
