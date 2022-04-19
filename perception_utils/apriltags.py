@@ -46,5 +46,5 @@ class AprilTagDetector:
         return T_tag_cameras
 
     def detect(self, sensor, intr, vis=False):
-        color_im, depth_im, _ = sensor.frames()
+        color_im, depth_im = sensor.frames()[:2]
         return self.detect_from_frames(color_im, depth_im, intr, vis=vis)
