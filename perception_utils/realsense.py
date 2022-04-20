@@ -1,5 +1,7 @@
+from autolab_core import CameraIntrinsics
 import pyrealsense2 as rs
 from perception import RgbdSensorFactory
+from perception.realsense_sensor import RealSenseSensor
 
 
 def discover_cams():
